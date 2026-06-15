@@ -32,3 +32,10 @@
 1. 袁雷等老师编写的[现代永磁同步电机控制原理及MATLAB仿真](https://baike.baidu.com/item/%E7%8E%B0%E4%BB%A3%E6%B0%B8%E7%A3%81%E5%90%8C%E6%AD%A5%E7%94%B5%E6%9C%BA%E6%8E%A7%E5%88%B6%E5%8E%9F%E7%90%86%E5%8F%8AMATLAB%E4%BB%BF%E7%9C%9F/57866982)：基于 PI 调节器的 PMSM 矢量控制章节
 2. matlab 示例工程 [使用霍尔传感器的 PMSM 的磁场定向控制](https://ww2.mathworks.cn/help/mcb/gs/foc-pmsm-using-hall-sensor-example.html)
 3. 电机参数来源于 MicroChip 文档 [Hurst DMA0204024B101 BLDC Motor DataSheet](https://ww1.microchip.com/downloads/en/DeviceDoc/Hurst%20DMA0204024B101%20BLDC%20Motor%20DataSheet.pdf)
+
+## pmsm_foc_speed-loop-PI_v1.0
+
+1. 基于 pmsm_foc_current-loop-PI_v1.0 模型，完成基于 PI 控制器的速度环仿真，模型文件为 `mcb_pmsm_foc_abs_speed_loop.slx`
+
+- 参考资料：
+同 pmsm_foc_current-loop-PI_v1.0。
