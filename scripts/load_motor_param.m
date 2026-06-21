@@ -6,7 +6,7 @@ motor.Ke = 0.371; % Ke = V_{peak}/K_{rad/s}, 1/Kv * 6 /1000
 
 motor.pole_pairs       = 5; % 电机极对数
 motor.phase_resistance = 0.57/2; % 相电阻, ohm
-motor.phase_inductance = 0.64/2 * 1e-3; % 相电感, H@1kHz，这里的相电感与 Lq/Ld 可能不同
+motor.phase_inductance = 0.64/2 * 1e-3; % 相电感, H@1kHz
 
 motor.psi_f            = 0.00788; % 永磁体磁链(Wb), 这里由 Kt/(1.5*p_n*\psi_f) 得到
 
@@ -24,18 +24,19 @@ PWM.frequency 	= 48e3;              % converter s/w freq, Hz
 PWM.period      = 1/PWM.frequency;   % PWM switching time period, s
 PWM.voltage_ref = 3.3; % PWM 占空比参考电压
 
-%% 电流环参数
+%% 电流控制器运行参数
 current.ctrl_frequency  = 16e3 % 电流控制器运行频率, Hz
 current.ctrl_period     = fix((1/current.ctrl_frequency) * 1e6) / 1e6; % 电流控制器运行周期, s
 
+%% 电流环控制器参数
 current.frequency  = 1/motor.electrical_time_constant;
 current.band_width = 2 * pi * current.frequency;    % 电流环带宽, rad/s
 current.kp         = current.band_width * motor.phase_inductance;
-current.ki         = motor.phase_resistance / motor.phase_inductance;
+current.ki         = motor.phase_resistance * current.band_width;
 
 current.limit = 7.81;
 current.limit_margin = 1.1;
 
-current.torque_constant = 0.04; % [Nm/A] for PM motors, [Nm/A^2] for induction motors. Equal to 8.27/Kv of the motor
+current.torque_constant = 0.04; % Kt: [Nm/A] for PM motors, [Nm/A^2] for induction motors. Equal to 8.27/Kv of the motor
 
 motor.torque_max   = 5; % 电机力矩限幅, Nm

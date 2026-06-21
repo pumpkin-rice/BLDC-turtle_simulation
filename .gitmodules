@@ -1,0 +1,3 @@
+[submodule "mex/pica-drive"]
+	path = mex/pica-drive
+	url = https://gitlab.com/pica-drive/pica-drive.git

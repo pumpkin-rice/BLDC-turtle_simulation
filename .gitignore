@@ -117,4 +117,5 @@ codegen/
 octave-workspace
 
 /ref
-/messy
+/log
+/build

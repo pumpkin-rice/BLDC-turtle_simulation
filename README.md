@@ -1,6 +1,8 @@
 # picadrive-simulink
 
-基于 Matlab 和 Simulink 的 BLDC(PMSM) 仿真入门工程集。
+基于 Matlab 和 Simulink 的 BLDC(PMSM) 仿真入门工程集，用于记录 PMSM 驱动仿真学习过程。
+
+此项目同时是 [pica-drive](https://gitlab.com/pica-drive/pica-drive) 仿真测试用例。
 
 # slx 文件命名说明
 从 FOC 闭环仿真开始，工程内各个文件按照 `mcb_<motor>_<controller>_<sensor>_[other]` 方式命名，各字段说明如下：
@@ -39,3 +41,10 @@
 
 - 参考资料：
 同 pmsm_foc_current-loop-PI_v1.0。
+
+## pmsm_foc_speed-loop-PI_pica-drive_v1.0
+
+1. 基于 mex 的 pica-drive 仿真模型，模型文件为 `mcb_pmsm_foc_abs_current_loop_mex.slx`
+
+- 参考资料：
+Ti InstaSPIN-FOC 和 InstaSPIN-MOTION 用户手册: https://www.ti.com.cn/cn/lit/ug/zhcu083i/zhcu083i.pdf
