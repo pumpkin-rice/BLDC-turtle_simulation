@@ -141,31 +141,27 @@ private:
 
 void MexFunction::run()
 {
-	motor_obj *motor = (motor_obj *)&m_bldc;
-
 	double ts_diff = m_ts_now - m_ts_last;
 
 	// 更新传感器参数
-	motor_sample_voltage_handler(motor, NULL, m_vbus);
-	motor_sample_encoder_handler(motor, m_theta_mach, m_omega_mach);
+    bldc_sample_voltage_handler(&m_bldc, NULL, m_vbus);
+    bldc_sample_encoder_handler(&m_bldc, m_theta_mach, m_omega_mach);
 
-	// 更新采样电流
-	motor_sample_current_handler(motor, m_voltage_shunt);
+    // 更新采样电流
+    bldc_sample_current_handler(&m_bldc, m_voltage_shunt);
 
-	motor_do_checks(motor);
+    bldc_do_checks(&m_bldc);
 
-	// 更新电机控制环参数
-	motor_set_torque(motor, m_torque);
+    // 更新电机控制环参数
+    bldc_set_torque(&m_bldc, m_torque);
 
-	motor_update(motor);
+    bldc_update(&m_bldc);
 
-	// 更新校正电流
-	motor_sample_current_calibrator_handler(motor, NULL, ts_diff);
-	
-	// 运行电流环
-	motor_run_current_loop(motor, ts_diff, ts_diff);
-
-	motor_get_duty_cycles(motor, m_duty_cycles);
+    // 更新校正电流
+    bldc_sample_current_calibrator_handler(&m_bldc, NULL, ts_diff);
+    
+    // 运行电流环
+    bldc_run(&m_bldc, ts_diff, ts_diff);
 
 	m_ts_last = m_ts_now;
 }
@@ -180,8 +176,8 @@ void MexFunction::init()
 	m_motor_param.pole_pairs        = 5;
 	m_motor_param.phase_inductance  = 0.5 * 0.64e-3,
 	m_motor_param.phase_resistance  = 0.5 * 0.57,
-	m_motor_param.shunt_conductance = 1/50e-3; // 50mR
 	m_motor_param.torque_constant   = 0.0591758042f;
+	m_motor_param.shunt_conductance = 1/50e-3; // 50mR
 
 	struct motor_parameters *params = &m_motor_param;
 
@@ -191,7 +187,7 @@ void MexFunction::init()
 
 	params->current_controller_bandwidth = 2 * M_PI / fminf(Tq, Td);
 
-	motor_init((motor_obj *)&m_bldc, &m_motor_param);
+	bldc_init(&m_bldc, &m_motor_param);
 }
 
 void MexFunction::sample_input(ArgumentList& inputs)
@@ -202,18 +198,18 @@ void MexFunction::sample_input(ArgumentList& inputs)
 	const matlab::data::TypedArray<double>& voltage_shunt = inputs[3];
 	const matlab::data::TypedArray<double>& target = inputs[4];
 
-	// m_voltage_shunt[0] = (voltage_shunt / m_motor_param.shunt_conductance) / m_bldc.parent.phase_current_rev_gain;
-	// m_voltage_shunt[1] = (voltage_shunt / m_motor_param.shunt_conductance) / m_bldc.parent.phase_current_rev_gain;
-	// m_voltage_shunt[2] = (voltage_shunt / m_motor_param.shunt_conductance) / m_bldc.parent.phase_current_rev_gain;
 
 	// 更新时间
 	m_ts_last = m_ts_now;
 	m_ts_now = clock[0];
 
 	// 电流电压
-	m_voltage_shunt[0] = voltage_shunt[0];
-	m_voltage_shunt[1] = voltage_shunt[1];
-	m_voltage_shunt[2] = voltage_shunt[2];
+	// m_voltage_shunt[0] = voltage_shunt[0];
+	// m_voltage_shunt[1] = voltage_shunt[1];
+	// m_voltage_shunt[2] = voltage_shunt[2];
+	m_voltage_shunt[0] = (voltage_shunt[0] / m_motor_param.shunt_conductance) / m_bldc.phase_current_rev_gain;
+	m_voltage_shunt[1] = (voltage_shunt[1] / m_motor_param.shunt_conductance) / m_bldc.phase_current_rev_gain;
+	m_voltage_shunt[2] = (voltage_shunt[2] / m_motor_param.shunt_conductance) / m_bldc.phase_current_rev_gain;
 
 	m_voltage_shunt_calibrator[0] = 0.f;
 	m_voltage_shunt_calibrator[1] = 0.f;
@@ -236,12 +232,15 @@ void MexFunction::fresh_output(ArgumentList *op)
 
 	//   [iabc, ialpha_beta, idq, vdq, v_alpha_beta_final, duty_cycle] = mex_picadrive_foc_current_loop(ts, theta_elec, omega_elec, iabc, target);
 
-	float *iabc = bldc_dbg_current_measured(&m_bldc);
-	float *i_alpha_beta_meas = foc_dbg_i_alpha_beta_measured(&(bldc_get_foc(&m_bldc)));
-	float *idq_meas = foc_dbg_idq_meas(&(bldc_get_foc(&m_bldc)));
-	float *vdq = foc_dbg_vdq_final(&(bldc_get_foc(&m_bldc)));
-	float *v_alpha_beta_final = foc_dbg_v_alpha_beta_final(&(bldc_get_foc(&m_bldc)));
-	float *duty_cycle = bldc_get_duty_cycle(&m_bldc);
+	struct foc *foc = bldc_get_current_controller_foc(&m_bldc);
+    
+    const float *iabc = bldc_get_current_phase_meas(&m_bldc);
+    const float *duty_cycle = bldc_get_duty_cycle(&m_bldc);
+
+    const float *i_alpha_beta_meas = foc_dbg_i_alpha_beta_measured(foc);
+    const float *idq_meas = foc_dbg_idq_meas(foc);
+    const float *vdq = foc_dbg_vdq(foc);
+    const float *v_alpha_beta_final = foc_dbg_v_alpha_beta_final(foc);
 
 	outputs[0] = factoryObject.createArray(ArrayDimensions{3},
 		{

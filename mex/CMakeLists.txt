@@ -26,8 +26,7 @@ if (Matlab_FOUND)
     set_target_properties(mex_picadrive_bldc_foc
         PROPERTIES
         COMPILE_FLAGS "-fvisibility=default"
-        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR} # mex 文件输出目录
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}
+        LIBRARY_OUTPUT_DIRECTORY ${MEX_OUTPUT_DIRECTORY} # mex 文件输出目录
     )
 
     target_include_directories(mex_picadrive_bldc_foc
