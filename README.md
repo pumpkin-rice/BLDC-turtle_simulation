@@ -2,7 +2,7 @@
 
 基于 Matlab 和 Simulink 的 BLDC(PMSM) 仿真入门工程集，用于记录 PMSM 驱动仿真学习过程。
 
-此项目同时是 [pica-drive](https://gitlab.com/pica-drive/pica-drive) 仿真测试用例。
+此项目同时是 [pica-drive](https://github.com/pumpkin-rice/pica-drive) 仿真测试用例。
 
 # slx 文件命名说明
 从 FOC 闭环仿真开始，工程内各个文件按照 `mcb_<motor>_<controller>_<sensor>_[other]` 方式命名，各字段说明如下：
