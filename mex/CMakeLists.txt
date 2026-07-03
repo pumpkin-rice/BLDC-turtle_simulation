@@ -35,6 +35,25 @@ if (Matlab_FOUND)
             pica-drive/src
     )
 
+    matlab_add_mex(
+        NAME mex_picadrive_bldc_speed_pi
+        MODULE
+        mex_bldc_speed_pi.cc
+        LINK_TO ${ARCHIVE_OUTPUT_DIRECTORY}/libpicadrive.a
+    )
+
+    set_target_properties(mex_picadrive_bldc_speed_pi
+        PROPERTIES
+        COMPILE_FLAGS "-fvisibility=default"
+        LIBRARY_OUTPUT_DIRECTORY ${MEX_OUTPUT_DIRECTORY} # mex 文件输出目录
+    )
+
+    target_include_directories(mex_picadrive_bldc_speed_pi
+        PRIVATE
+            pica-drive/include
+            pica-drive/src
+    )
+
     message(STATUS "Mex file can be found in ${CMAKE_SOURCE_DIR}/bin")
 
 else ()
