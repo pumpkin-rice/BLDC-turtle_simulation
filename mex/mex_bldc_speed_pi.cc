@@ -160,6 +160,9 @@ void MexFunction::run()
     
     // 更新电机控制环参数
     m_bldc.setTorque(m_torque);
+    m_bldc.setPosition(m_position);
+    m_bldc.setVelocity(m_speed);
+
     m_bldc.update(ts_diff);
 
     // 更新校正电流
@@ -193,6 +196,8 @@ void MexFunction::init()
     m_cfg.phase_resistance  = 0.5 * 0.57,
     m_cfg.torque_constant   = 0.0591758042f;
     m_cfg.shunt_conductance = 1/50e-3; // 50mR
+    m_cfg.current_limit     = 7.81;
+    m_cfg.inertia = 0.0000177245;
 
     // 时间常数
     float Tq = m_cfg.phase_inductance / m_cfg.phase_resistance;
@@ -202,8 +207,13 @@ void MexFunction::init()
 
     m_cfg.R_wL_FF_enabled = m_cfg.b_EMF_FF_enabled = true;
 
-    // 使用力矩控制模式
-    m_cfg.speed_controller_cfg.control_mode = pica::motor::SpeedController::kTorque;
+    auto& speed_cfg = m_cfg.speed_controller_cfg;
+    float speed_bw = 3871/60.f * 2*M_PI; // 速度环带宽：4000 rpm
+
+    speed_cfg.control_mode = pica::motor::SpeedController::kPosition;
+    speed_cfg.pi.pos_gain = 60.f;
+    speed_cfg.pi.vel_gain = (speed_bw * m_cfg.inertia) / m_cfg.torque_constant;
+    speed_cfg.pi.vel_integrator_gain = speed_bw * speed_cfg.pi.vel_gain;
 
     m_bldc.init(&m_cfg);
 }
