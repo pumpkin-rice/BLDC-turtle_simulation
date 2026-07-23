@@ -22,6 +22,7 @@
 
 #define ENABLE_PICA_DRIVE_DEBUG 1
 
+#include "drive_conf.h"
 #include "motor/bldc.hpp"
 
 using namespace matlab::data;
@@ -160,13 +161,13 @@ void MexFunction::run()
     
     // 更新电机控制环参数
     m_bldc.setTorque(m_torque);
-    m_bldc.update(ts_diff);
+    m_bldc.update((hrt_absnano(m_ts_now * 1e9)) + 45);
 
     // 更新校正电流
-    m_bldc.sampleCurrentCalibratorHandler(NULL, ts_diff);
+    m_bldc.sampleCurrentCalibratorHandler(NULL, PICA_DRIVE_CURRENT_MEASURE_PERIOD);
     
     // 运行电流环
-    m_bldc.runControllerLoop(ts_diff, ts_diff, 2*ts_diff);
+    m_bldc.run((hrt_absnano(m_ts_now * 1e9)) + 120);
 }
 
 void MexFunction::IRQHandler()
@@ -176,7 +177,7 @@ void MexFunction::IRQHandler()
     m_bldc.sampleEncoderHandler(m_theta_mach, m_omega_mach);
 
     // 更新采样电流
-    m_bldc.sampleCurrentHandler(m_voltage_shunt);
+    m_bldc.sampleCurrentHandler(m_voltage_shunt, (hrt_absnano(m_ts_now * 1e9)));
     
     m_ts_sample = m_ts_now;
 }

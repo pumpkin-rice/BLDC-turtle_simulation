@@ -33,6 +33,7 @@ if (Matlab_FOUND)
         PRIVATE
             pica-drive/include
             pica-drive/src
+            pica-drive/ports
     )
 
     matlab_add_mex(
@@ -52,6 +53,7 @@ if (Matlab_FOUND)
         PRIVATE
             pica-drive/include
             pica-drive/src
+            pica-drive/ports
     )
 
     message(STATUS "Mex file can be found in ${CMAKE_SOURCE_DIR}/bin")
