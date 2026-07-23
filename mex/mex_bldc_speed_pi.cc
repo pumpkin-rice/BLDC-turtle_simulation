@@ -22,6 +22,7 @@
 
 #define ENABLE_PICA_DRIVE_DEBUG 1
 
+#include "drive_conf.h"
 #include "motor/bldc.hpp"
 
 using namespace matlab::data;
@@ -163,13 +164,13 @@ void MexFunction::run()
     m_bldc.setPosition(m_position);
     m_bldc.setVelocity(m_speed);
 
-    m_bldc.update(ts_diff);
+    m_bldc.update((hrt_absnano(m_ts_now * 1e9)) + 45);
 
     // 更新校正电流
-    m_bldc.sampleCurrentCalibratorHandler(NULL, ts_diff);
+    m_bldc.sampleCurrentCalibratorHandler(NULL, PICA_DRIVE_CURRENT_MEASURE_PERIOD);
     
     // 运行电流环
-    m_bldc.runControllerLoop(ts_diff, ts_diff, 2*ts_diff);
+    m_bldc.run((hrt_absnano(m_ts_now * 1e9))+120);
 }
 
 void MexFunction::IRQHandler()
@@ -179,7 +180,7 @@ void MexFunction::IRQHandler()
     m_bldc.sampleEncoderHandler(m_theta_mach, m_omega_mach);
 
     // 更新采样电流
-    m_bldc.sampleCurrentHandler(m_voltage_shunt);
+    m_bldc.sampleCurrentHandler(m_voltage_shunt, (hrt_absnano(m_ts_now * 1e9)));
     
     m_ts_sample = m_ts_now;
 }
@@ -210,7 +211,8 @@ void MexFunction::init()
     auto& speed_cfg = m_cfg.speed_controller_cfg;
     float speed_bw = 3871/60.f * 2*M_PI; // 速度环带宽：4000 rpm
 
-    speed_cfg.control_mode = pica::motor::SpeedController::kPosition;
+    speed_cfg.control_mode = pica::motor::SpeedController::kVelocity;
+    // speed_cfg.control_mode = pica::motor::SpeedController::kPosition;
     speed_cfg.pi.pos_gain = 60.f;
     speed_cfg.pi.vel_gain = (speed_bw * m_cfg.inertia) / m_cfg.torque_constant;
     speed_cfg.pi.vel_integrator_gain = speed_bw * speed_cfg.pi.vel_gain;
