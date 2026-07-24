@@ -7,7 +7,11 @@ set(ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib)
 # set(RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bin)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH})
+# set(CMAKE_INSTALL_LIBDIR ${ARCHIVE_OUTPUT_DIRECTORY})
 
+set(PICADRIVE_ENABLE_LOGGER true)
+
+add_subdirectory(third)
 add_subdirectory(pica-drive)
 
 find_package( Matlab COMPONENTS MX_LIBRARY )
@@ -21,6 +25,7 @@ if (Matlab_FOUND)
         MODULE
         mex_bldc_foc.cc
         LINK_TO ${ARCHIVE_OUTPUT_DIRECTORY}/libpicadrive.a
+        LINK_TO spdlog::spdlog_header_only
     )
 
     set_target_properties(mex_picadrive_bldc_foc
@@ -34,6 +39,7 @@ if (Matlab_FOUND)
             pica-drive/include
             pica-drive/src
             pica-drive/ports
+            pica-drive/third/matrix
     )
 
     matlab_add_mex(
@@ -41,6 +47,7 @@ if (Matlab_FOUND)
         MODULE
         mex_bldc_speed_pi.cc
         LINK_TO ${ARCHIVE_OUTPUT_DIRECTORY}/libpicadrive.a
+        LINK_TO spdlog::spdlog_header_only
     )
 
     set_target_properties(mex_picadrive_bldc_speed_pi
@@ -54,6 +61,7 @@ if (Matlab_FOUND)
             pica-drive/include
             pica-drive/src
             pica-drive/ports
+            pica-drive/third/matrix
     )
 
     message(STATUS "Mex file can be found in ${CMAKE_SOURCE_DIR}/bin")

@@ -1,3 +1,7 @@
+# 屏蔽日志文件
+/logs
+*.log
+
 # ---> VisualStudioCode
 .vscode/*
 !.vscode/settings.json
