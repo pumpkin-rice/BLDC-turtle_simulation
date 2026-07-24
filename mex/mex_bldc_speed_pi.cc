@@ -16,6 +16,8 @@
 #include <iostream>
 #include <fstream>
 #include <sys/time.h>
+#include <chrono>
+#include <string>
 
 #include "mex.hpp"
 #include "mexAdapter.hpp"
@@ -23,42 +25,70 @@
 #define ENABLE_PICA_DRIVE_DEBUG 1
 
 #include "drive_conf.h"
-#include "motor/bldc.hpp"
+#include "bldc/bldc.hpp"
+#include "bldc/config_manager.hpp"
+
+#include <spdlog/spdlog.h>
+#include "spdlog/sinks/basic_file_sink.h"
 
 using namespace matlab::data;
 using matlab::mex::ArgumentList;
 
 using ofstream = std::ofstream;
 
+using namespace pica::motor::bldc;
+
 class MexFunction : public matlab::mex::Function {
 public:
-    using BLDC = pica::motor::BLDC;
-
     MexFunction()
     {
+        {
+            // 日志初始化
+            std::stringstream ss;
+            ss << time(nullptr);
+            auto logger = spdlog::basic_logger_mt("speed", "logs/" + ss.str() + ".log");
+            
+            logger->set_level(spdlog::level::info);
+            logger->flush_on(spdlog::level::err);
+
+            spdlog::set_default_logger(logger);
+        }
+
+        spdlog::info("Mex start.");
+
         init();
+
+        ConfigMgr::GetInstance()->init(&m_flash);
+
+        spdlog::info("Mex: ConfigMgr addr at {}, motor at {}", (uint64_t)ConfigMgr().GetInstance(), uint64_t(ConfigMgr().GetInstance()->motor()));
+
+        m_bldc.init();
     }
     ~MexFunction()
     {
-        
+        spdlog::info("Mex exit.");
+
+        spdlog::shutdown();
     }
 
     void operator()(ArgumentList outputs, ArgumentList inputs) {
         // update input args
         // checkArguments(outputs, inputs);
 
-        sample_input(inputs);
+        try {
+            input(inputs);
 
-        if (m_counting_up) {
-            m_counting_up = false;
             IRQHandler();
-        
-        } else {
-            m_counting_up = true;
-            run();
-        }
 
-        fresh_output(&outputs);
+            run();
+
+            output(&outputs);
+
+        } catch(const std::exception& e) {
+            spdlog::error(e.what());
+        }
+        
+
     }
 
     void checkArguments(ArgumentList outputs, ArgumentList inputs) {
@@ -101,34 +131,13 @@ private:
      * @brief 处理输入数据，如参数变换等
      *
      */
-    void sample_input(ArgumentList& inputs);
+    void input(ArgumentList& inputs);
 
     void IRQHandler();
 
     void run();
 
-    void fresh_output(ArgumentList *outputs);
-
-    void log();
-
-    double diff_timestamp(const struct timespec *start, const struct timespec *end)
-    {
-        return (end->tv_sec - start->tv_sec) + (end->tv_nsec - start->tv_nsec) * 1e-9;
-    }
-
-    int getTimestamp(struct timespec *ts)
-    {
-        struct timeval tv;
-
-        if (gettimeofday(&tv, NULL) < 0) {
-            return -1;
-        }
-
-        ts->tv_sec = tv.tv_sec;
-        ts->tv_nsec = tv.tv_usec * 1000;
-
-        return 0;
-    }
+    void output(ArgumentList *outputs);
 
 private:
     float m_voltage_shunt[3], m_ibus, m_voltage_shunt_calibrator[3];
@@ -142,11 +151,11 @@ private:
     float m_speed{0};
     float m_position{0};
 
-    double m_ts_now{0};
-    double m_ts_sample{0};
+    double m_clock{0};
+    hrt_absnano m_tick{0};
 
-    pica::motor::BLDC m_bldc;
-    pica::motor::Config m_cfg;
+    BLDC m_bldc;
+    ConfigManager::Flash m_flash;
 
     bool m_counting_up{true}; /*!< 模拟当前 PWM 计数方向: true - 向上, false-向下*/
 
@@ -155,22 +164,22 @@ private:
 
 void MexFunction::run()
 {
-    double ts_diff = m_ts_now - m_ts_sample;
-
     m_bldc.do_checks();
     
     // 更新电机控制环参数
-    m_bldc.setTorque(m_torque);
-    m_bldc.setPosition(m_position);
-    m_bldc.setVelocity(m_speed);
+    m_bldc.setTorqueSetpoint(m_torque);
+    m_bldc.setVelocitySetpoint(m_speed);
+    m_bldc.setPositionSetpoint(m_position);
 
-    m_bldc.update((hrt_absnano(m_ts_now * 1e9)) + 45);
+    m_bldc.update(m_tick + 45);
 
     // 更新校正电流
     m_bldc.sampleCurrentCalibratorHandler(NULL, PICA_DRIVE_CURRENT_MEASURE_PERIOD);
     
     // 运行电流环
-    m_bldc.run((hrt_absnano(m_ts_now * 1e9))+120);
+    if (!m_bldc.run(m_tick + 120)) {
+        spdlog::info("run bldc failed");
+    }
 }
 
 void MexFunction::IRQHandler()
@@ -180,47 +189,38 @@ void MexFunction::IRQHandler()
     m_bldc.sampleEncoderHandler(m_theta_mach, m_omega_mach);
 
     // 更新采样电流
-    m_bldc.sampleCurrentHandler(m_voltage_shunt, (hrt_absnano(m_ts_now * 1e9)));
-    
-    m_ts_sample = m_ts_now;
+    m_bldc.sampleCurrentHandler(m_voltage_shunt, m_tick);
 }
 
 void MexFunction::init()
 {
-    m_cfg.initDefaultValue();
-    
-    m_cfg.motor_type = BLDC::HIGH_CURRENT,
-    m_cfg.current_controller_type = BLDC::CurrentControllerType::FieldOrientedControl,
+    auto& motor = m_flash.motor;
+    auto& speed = m_flash.speed.pi;
+    auto& current = m_flash.current.foc;
 
-    m_cfg.pole_pairs        = 5;
-    m_cfg.phase_inductance  = 0.5 * 0.64e-3,
-    m_cfg.phase_resistance  = 0.5 * 0.57,
-    m_cfg.torque_constant   = 0.0591758042f;
-    m_cfg.shunt_conductance = 1/50e-3; // 50mR
-    m_cfg.current_limit     = 7.81;
-    m_cfg.inertia = 0.0000177245;
+    motor.motor_type = BLDC::kHighCurrent,
+    motor.current_controller_type = BLDC::CurrentControllerType::kFOC,
+    motor.speed_controller_type = speed::kPI;
+    motor.motor_control_mode = int8_t(pica::Motor::ControlMode::kVelocity);
+    // motor.motor_control_mode = int8_t(pica::Motor::ControlMode::kPosition);
+
+    motor.pole_pairs        = 5;
+    motor.phase_inductance  = 0.5 * 0.64e-3,
+    motor.phase_resistance  = 0.5 * 0.57,
+    motor.torque_constant   = 0.0591758042f;
+    motor.shunt_conductance = 1/50e-3; // 50mR
 
     // 时间常数
-    float Tq = m_cfg.phase_inductance / m_cfg.phase_resistance;
-    float Td = m_cfg.phase_inductance / m_cfg.phase_resistance;
+    float Tq = motor.phase_inductance / motor.phase_resistance;
+    float Td = motor.phase_inductance / motor.phase_resistance;
 
-    m_cfg.current_controller_bandwidth = 2 * M_PI / fminf(Tq, Td);
+    motor.current_controller_bandwidth = 2 * M_PI / fminf(Tq, Td);
 
-    m_cfg.R_wL_FF_enabled = m_cfg.b_EMF_FF_enabled = true;
-
-    auto& speed_cfg = m_cfg.speed_controller_cfg;
-    float speed_bw = 3871/60.f * 2*M_PI; // 速度环带宽：4000 rpm
-
-    speed_cfg.control_mode = pica::motor::SpeedController::kVelocity;
-    // speed_cfg.control_mode = pica::motor::SpeedController::kPosition;
-    speed_cfg.pi.pos_gain = 60.f;
-    speed_cfg.pi.vel_gain = (speed_bw * m_cfg.inertia) / m_cfg.torque_constant;
-    speed_cfg.pi.vel_integrator_gain = speed_bw * speed_cfg.pi.vel_gain;
-
-    m_bldc.init(&m_cfg);
+    motor.R_wL_FF_enabled = true;
+    motor.b_EMF_FF_enabled = true;
 }
 
-void MexFunction::sample_input(ArgumentList& inputs)
+void MexFunction::input(ArgumentList& inputs)
 {
     const TypedArray<double>& clock = inputs[0];
     const matlab::data::TypedArray<double>& angle_mach = inputs[1];
@@ -228,17 +228,20 @@ void MexFunction::sample_input(ArgumentList& inputs)
     const matlab::data::TypedArray<double>& voltage_shunt = inputs[3];
     const matlab::data::TypedArray<double>& target = inputs[4];
 
+    auto& motor = *ConfigMgr::GetInstance()->motor();
 
     // 更新时间
-    m_ts_now = clock[0];
+    m_clock = clock[0];
+    m_tick = hrt_absnano(m_clock * 1e9);
 
     // 电流电压
     // m_voltage_shunt[0] = voltage_shunt[0];
     // m_voltage_shunt[1] = voltage_shunt[1];
     // m_voltage_shunt[2] = voltage_shunt[2];
-    m_voltage_shunt[0] = (voltage_shunt[0] / m_cfg.shunt_conductance) / m_bldc.getPhaseCurrentRevGain();
-    m_voltage_shunt[1] = (voltage_shunt[1] / m_cfg.shunt_conductance) / m_bldc.getPhaseCurrentRevGain();
-    m_voltage_shunt[2] = (voltage_shunt[2] / m_cfg.shunt_conductance) / m_bldc.getPhaseCurrentRevGain();
+    float scale = 1/motor.shunt_conductance / m_bldc.phaseCurrentRevGain();
+    m_voltage_shunt[0] = voltage_shunt[0] * scale;
+    m_voltage_shunt[1] = voltage_shunt[1] * scale;
+    m_voltage_shunt[2] = voltage_shunt[2] * scale;
 
     m_voltage_shunt_calibrator[0] = 0.f;
     m_voltage_shunt_calibrator[1] = 0.f;
@@ -254,23 +257,25 @@ void MexFunction::sample_input(ArgumentList& inputs)
     m_torque   = target[2];
 }
 
-void MexFunction::fresh_output(ArgumentList *op)
+void MexFunction::output(ArgumentList *op)
 {
     ArrayFactory factoryObject;
     ArgumentList& outputs = *op;
 
     //   [iabc, ialpha_beta, idq, vdq, v_alpha_beta_final, duty_cycle] = mex_picadrive_foc_current_loop(ts, theta_elec, omega_elec, iabc, target);
 
-    const float *iabc = m_bldc.getPhaseCurrentMeasured();
-    const float *duty_cycle = m_bldc.getDutyCycles();
+    float iabc[3];
 
-    auto foc = m_bldc.getCurrentController<pica::motor::FOC>();
+    m_bldc.currentMeasured().copyTo(iabc);
+    auto duty_cycle = m_bldc.dutyCycle();
+
+    auto foc = m_bldc.currentController<FOC>();
 
     auto& i_alpha_beta_meas  = foc->getCurrentAlphaBetaMeasured();
     auto& idq_meas           = foc->getCurrentDQMeasured();
     auto& vdq                = foc->getVoltageDQFinal();
     auto& vdq_sp             = foc->getVoltageDQSetpoint();
-    auto& v_alpha_beta_final = foc->getVoltageAlphaBetaFinal();
+    auto& v_alpha_beta_final = m_bldc.voltageAlphaBetaFinal();
 
     outputs[0] = factoryObject.createArray(ArrayDimensions{3},
         {
@@ -281,32 +286,32 @@ void MexFunction::fresh_output(ArgumentList *op)
     );
     outputs[1] = factoryObject.createArray(ArrayDimensions{2},
         {
-            (double)i_alpha_beta_meas.alpha,
-            (double)i_alpha_beta_meas.beta,
+            (double)i_alpha_beta_meas(0),
+            (double)i_alpha_beta_meas(1),
         }
     );
     outputs[2] = factoryObject.createArray(ArrayDimensions{2},
         {
-            (double)idq_meas.d,
-            (double)idq_meas.q,
+            (double)idq_meas(0),
+            (double)idq_meas(1),
         }
     );
     outputs[3] = factoryObject.createArray(ArrayDimensions{2},
         {
-            (double)foc->getCurrentControllerD().err_prev,
-            (double)foc->getCurrentControllerQ().err_prev,
+            (double)foc->getControllerParam().err_prev(0),
+            (double)foc->getControllerParam().err_prev(1),
         }
     );
     outputs[4] = factoryObject.createArray(ArrayDimensions{2},
         {
-            (double)vdq.d,
-            (double)vdq.q,
+            (double)vdq(0),
+            (double)vdq(1),
         }
     );
     outputs[5] = factoryObject.createArray(ArrayDimensions{2},
         {
-            (double)v_alpha_beta_final.alpha,
-            (double)v_alpha_beta_final.beta,
+            (double)v_alpha_beta_final(0),
+            (double)v_alpha_beta_final(1),
         }
     );
     outputs[6] = factoryObject.createArray(ArrayDimensions{3},
@@ -316,5 +321,4 @@ void MexFunction::fresh_output(ArgumentList *op)
             (double)duty_cycle[2],
         }
     );
-
 }

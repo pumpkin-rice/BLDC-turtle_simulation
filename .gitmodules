@@ -1,3 +1,14 @@
 [submodule "mex/pica-drive"]
 	path = mex/pica-drive
 	url = git@github.com:pumpkin-rice/pica-drive.git
+[submodule "mex/fmt"]
+	path = mex/fmt
+	url = https://github.com/fmtlib/fmt.git
+	branch = main
+[submodule "mex/third/fmt"]
+	path = mex/third/fmt
+	url = https://github.com/fmtlib/fmt.git
+	branch = main
+[submodule "mex/third/spdlog"]
+	path = mex/third/spdlog
+	url = https://github.com/gabime/spdlog
